@@ -10,7 +10,7 @@ algo_params:
   num_steps_per_eval: 600
   embedding_batch_size: 100
   embedding_mini_batch_size: 100
-  data_dir: './offline_dataset/cheetah-vel-custom'
+  data_dir: '/ext/skshyn/offline_dataset/cheetah-vel-custom'
   num_train_steps_per_itr: 1000
   club_model_loss_weight: 10.0
   club_loss_weight: 10.0

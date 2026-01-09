@@ -42,7 +42,7 @@ import pdb
 class Workspace(object):
     def __init__(self, cfg, env=None, logger=True):
         # self.work_dir = os.getcwd()
-        self.work_dir = "./offline_dataset"
+        self.work_dir = "/ext/skshyn/offline_dataset"
         self.work_dir = os.path.join(self.work_dir, cfg.env_name, f'goal_idx{cfg.goal_idx}')
         os.makedirs(self.work_dir, exist_ok=True)
         print(f'workspace: {self.work_dir}')

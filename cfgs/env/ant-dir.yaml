@@ -9,7 +9,7 @@ algo_params:
   num_steps_per_eval: 800
   embedding_batch_size: 512
   embedding_mini_batch_size: 512
-  data_dir: './offline_dataset/ant-dir-custom'
+  data_dir: 'ext/skshyn/offline_dataset/ant-dir-custom'
   club_model_loss_weight: 10.0
   club_loss_weight: 50.0
   prediction_loss_weight: 1.5

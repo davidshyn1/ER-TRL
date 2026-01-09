@@ -18,7 +18,7 @@ env_params:
 path_to_weights: null
 
 util_params:
-  base_log_dir: ./output
+  base_log_dir: /ext/skshyn/output
   debug: false
   
 hydra:  

@@ -54,3 +54,5 @@ algo_params:
   n_trj: 50
   z_loss_weight: 10
   dump_eval_paths: 0
+  max_trajs_per_task: null  # 각 task별로 사용할 trajectory 개수 제한 (null이면 제한 없음, 숫자 설정 시 최신 N개만 사용)
+  

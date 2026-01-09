@@ -197,7 +197,7 @@ def create_simple_exp_name():
     return timestamp
 
 
-def create_log_dir(exp_prefix, exp_id=None, seed=None, base_log_dir=None):
+def create_log_dir(exp_prefix, exp_id=None, seed=None, base_log_dir=None, extra=None):
     """
     Creates and returns a unique log directory.
 
@@ -210,10 +210,16 @@ def create_log_dir(exp_prefix, exp_id=None, seed=None, base_log_dir=None):
     exp_name = exp_id
     if exp_name is None:
         exp_name = create_simple_exp_name()
-    if seed is not None:
-        log_dir = os.path.join(base_log_dir, exp_prefix.replace("_", "-"), exp_name, f"seed{seed}")
+    if extra is not None:
+        if seed is not None:
+            log_dir = os.path.join(base_log_dir, exp_prefix.replace("_", "-"), exp_name, f"{extra}_seed{seed}")
+        else:
+            log_dir = os.path.join(base_log_dir, exp_prefix.replace("_", "-"), exp_name, f"{extra}")
     else:
-        log_dir = os.path.join(base_log_dir, exp_prefix.replace("_", "-"), exp_name)
+        if seed is not None:
+            log_dir = os.path.join(base_log_dir, exp_prefix.replace("_", "-"), exp_name, f"seed{seed}")
+        else:
+            log_dir = os.path.join(base_log_dir, exp_prefix.replace("_", "-"), exp_name)
     os.makedirs(log_dir, exist_ok=True)
     return log_dir
 
@@ -263,9 +269,16 @@ def setup_logger(
     :return:
     """
     first_time = log_dir is None
+    
     if first_time:
+        if variant is not None and 'algo_params' in variant:
+            max_trajs = variant['algo_params'].get('max_trajs_per_task', None)
+            if max_trajs is not None:
+                name = f't{max_trajs}'
+            else:
+                name = ''
         log_dir = create_log_dir(exp_prefix, exp_id=exp_id, seed=seed,
-                                 base_log_dir=base_log_dir)
+                                 base_log_dir=base_log_dir, extra=name)
 
     if variant is not None:
         logger.log("Variant:")
@@ -304,11 +317,18 @@ def setup_logger(
         with open(osp.join(log_dir, "script_name.txt"), "w") as f:
             f.write(script_name)
     if use_wandb:
+        name = f'{exp_prefix}-{exp_id}-{seed}'
+        if variant is not None and 'algo_params' in variant:
+            max_trajs = variant['algo_params'].get('max_trajs_per_task', None)
+            if max_trajs is not None:
+                name = f'{name}_t{max_trajs}'
+        name = f'{name}-{time.time()}'        
         wandb_logger = wandb.init(
-            group=f"{variant['algo_type']}-{exp_prefix}", 
+            group=f"{variant['algo_type']}-{exp_prefix}-{exp_id}", 
             project='OMRL', 
-            name=f'{exp_prefix}-{seed}-{time.time()}', 
+            name=name, 
             settings=wandb.Settings(_disable_stats=True),
+            dir="/ext/skshyn/wandb_omrl",
             config=variant,)
     else:
         wandb_logger = None

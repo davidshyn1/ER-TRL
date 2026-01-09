@@ -74,6 +74,7 @@ class OfflineMetaRLAlgorithm(metaclass=abc.ABCMeta):
         self.use_club                        = kwargs['use_club']
         self.club_model_loss_weight          = kwargs['club_model_loss_weight']
         self.club_loss_weight                = kwargs['club_loss_weight']
+        self.max_trajs_per_task              = kwargs.get('max_trajs_per_task', None)  # None이면 제한 없음, 설정되면 최신 N개만 사용
 
         self.eval_deterministic              = eval_deterministic
         self.render                          = render
@@ -101,49 +102,64 @@ class OfflineMetaRLAlgorithm(metaclass=abc.ABCMeta):
         self.init_buffer()
 
     def init_buffer(self):
+        # Helper function to get trajectory paths for a task and limit by latest trajectories
+        def get_latest_trajectories_for_task(task_idx, is_sample=False, is_extreme=False):
+            """각 task별로 모든 trajectory 경로를 찾고, step 번호 기준으로 정렬하여 최신 N개만 반환"""
+            trj_paths = []
+            if is_extreme:
+                epoch_range = self.train_epoch
+            elif task_idx in self.eval_tasks:
+                epoch_range = self.eval_epoch
+            else:
+                epoch_range = self.train_epoch
+                
+            if is_sample:
+                pattern = os.path.join(self.data_dir, f"goal_idx{task_idx}", "trj_evalsample*_step*.npy")
+            else:
+                pattern = os.path.join(self.data_dir, f"goal_idx{task_idx}", "trj_eval*_step*.npy")
+            
+            # 실제 존재하는 파일만 찾기
+            all_paths = glob.glob(pattern)
+            
+            # step 번호 추출하여 정렬 (내림차순: 최신이 먼저)
+            def extract_step(path):
+                filename = os.path.basename(path)
+                # 파일명 형식: trj_eval{k}_step{j}.npy 또는 trj_evalsample{k}_step{j}.npy
+                try:
+                    step_part = filename.split('_step')[1].split('.npy')[0]
+                    return int(step_part)
+                except:
+                    return 0
+            
+            # step 번호 기준으로 정렬 (내림차순)
+            all_paths.sort(key=extract_step, reverse=True)
+            
+            # 최신 N개만 선택 (제한이 설정된 경우)
+            if self.max_trajs_per_task is not None and self.max_trajs_per_task > 0:
+                all_paths = all_paths[:self.max_trajs_per_task]
+            
+            return all_paths
+        
+        # 각 task별로 최신 trajectory 경로 수집
         train_trj_paths = []
         eval_trj_paths = []
         extreme_trj_paths = []
-        # trj entry format: [obs, action, reward, new_obs]
-        if self.sample:
-            for i in self.train_tasks:
-                for j in range(self.train_epoch[0], self.train_epoch[1], self.train_epoch[2]):
-                    for k in range(self.n_trj):
-                        train_trj_paths += [os.path.join(self.data_dir, f"goal_idx{i}", f"trj_evalsample{k}_step{j}.npy")]
-            for i in self.eval_tasks:
-                for j in range(self.eval_epoch[0], self.eval_epoch[1], self.eval_epoch[2]):
-                    for k in range(self.n_trj):
-                        eval_trj_paths += [os.path.join(self.data_dir, f"goal_idx{i}", f"trj_evalsample{k}_step{j}.npy")]
-            for i in self.extreme_tasks:
-                for j in range(self.train_epoch[0], self.train_epoch[1], self.train_epoch[2]):
-                    for k in range(self.n_trj):
-                        extreme_trj_paths += [os.path.join(self.data_dir, f"goal_idx{i}", f"trj_evalsample{k}_step{j}.npy")]                
-        else:
-            for i in self.train_tasks:
-                for j in range(self.train_epoch[0], self.train_epoch[1], self.train_epoch[2]):
-                    for k in range(self.n_trj):
-                        train_trj_paths += [os.path.join(self.data_dir, f"goal_idx{i}", f"trj_eval{k}_step{j}.npy")]
-            for i in self.eval_tasks:
-                for j in range(self.eval_epoch[0], self.eval_epoch[1], self.eval_epoch[2]):
-                    for k in range(self.n_trj):
-                        eval_trj_paths += [os.path.join(self.data_dir, f"goal_idx{i}", f"trj_eval{k}_step{j}.npy")]
-            for i in self.extreme_tasks:
-                for j in range(self.train_epoch[0], self.train_epoch[1], self.train_epoch[2]):
-                    for k in range(self.n_trj):
-                        extreme_trj_paths += [os.path.join(self.data_dir, f"goal_idx{i}", f"trj_eval{k}_step{j}.npy")]      
+        
+        for task_idx in self.train_tasks:
+            train_trj_paths.extend(get_latest_trajectories_for_task(task_idx, is_sample=self.sample))
+        
+        for task_idx in self.eval_tasks:
+            eval_trj_paths.extend(get_latest_trajectories_for_task(task_idx, is_sample=self.sample))
+        
+        for task_idx in self.extreme_tasks:
+            extreme_trj_paths.extend(get_latest_trajectories_for_task(task_idx, is_sample=self.sample, is_extreme=True))
                             
-        train_paths = [train_trj_path for train_trj_path in train_trj_paths if
-                       int(train_trj_path.split('/')[-2].split('goal_idx')[-1]) in self.train_tasks]
-        train_task_idxs = [int(train_trj_path.split('/')[-2].split('goal_idx')[-1]) for train_trj_path in train_trj_paths if
-                       int(train_trj_path.split('/')[-2].split('goal_idx')[-1]) in self.train_tasks]
-        eval_paths = [eval_trj_path for eval_trj_path in eval_trj_paths if
-                      int(eval_trj_path.split('/')[-2].split('goal_idx')[-1]) in self.eval_tasks]
-        eval_task_idxs = [int(eval_trj_path.split('/')[-2].split('goal_idx')[-1]) for eval_trj_path in eval_trj_paths if
-                          int(eval_trj_path.split('/')[-2].split('goal_idx')[-1]) in self.eval_tasks]
-        extreme_paths = [extreme_trj_path for extreme_trj_path in extreme_trj_paths if
-                      int(extreme_trj_path.split('/')[-2].split('goal_idx')[-1]) in self.extreme_tasks]
-        extreme_task_idxs = [int(extreme_trj_path.split('/')[-2].split('goal_idx')[-1]) for extreme_trj_path in extreme_trj_paths if
-                          int(extreme_trj_path.split('/')[-2].split('goal_idx')[-1]) in self.extreme_tasks]
+        train_paths = train_trj_paths
+        train_task_idxs = [int(path.split('/')[-2].split('goal_idx')[-1]) for path in train_trj_paths]
+        eval_paths = eval_trj_paths
+        eval_task_idxs = [int(path.split('/')[-2].split('goal_idx')[-1]) for path in eval_trj_paths]
+        extreme_paths = extreme_trj_paths
+        extreme_task_idxs = [int(path.split('/')[-2].split('goal_idx')[-1]) for path in extreme_trj_paths]
         
         obs_train_lst = []
         action_train_lst = []
@@ -188,7 +204,7 @@ class OfflineMetaRLAlgorithm(metaclass=abc.ABCMeta):
             task_eval = [eval_task_idx for _ in range(trj_npy.shape[0])]
             task_eval_lst += task_eval
         for extreme_path, extreme_task_idx in zip(extreme_paths, extreme_task_idxs):
-            trj_npy = np.load(eval_path, allow_pickle=True)
+            trj_npy = np.load(extreme_path, allow_pickle=True)
             obs_extreme_lst += list(trj_npy[:, 0])
             action_extreme_lst += list(trj_npy[:, 1])
             reward_extreme_lst += list(trj_npy[:, 2])
